@@ -99,39 +99,58 @@ class BEVF_FasterRCNN(MVXFasterRCNN):
     
     def extract_feat(self, points, img, img_metas, gt_bboxes_3d=None):
         """Extract features from images and points."""
-        img_feats = self.extract_img_feat(img, img_metas)
-        pts_feats = self.extract_pts_feat(points, img_feats, img_metas)
+        # img: [1, 6, 3, 448, 800]
+        img_feats = self.extract_img_feat(img, img_metas) # img_feats: [6, 256, 56, 100]
+        pts_feats = self.extract_pts_feat(points, img_feats, img_metas) # None
 
         if self.lift:
-            BN, C, H, W = img_feats[0].shape
-            batch_size = BN//self.num_views
-            img_feats_view = img_feats[0].view(batch_size, self.num_views, C, H, W)
+            BN, C, H, W = img_feats[0].shape # [6, 256, 56, 100]
+            batch_size = BN//self.num_views # 6 // 6, bs=1
+            img_feats_view = img_feats[0].view(batch_size, self.num_views, C, H, W) # [6, 256, 56, 100] -> [1, 6, 256, 56, 100]
             rots = []
             trans = []
-            for sample_idx in range(batch_size):
-                rot_list = []
-                trans_list = []
-                for mat in img_metas[sample_idx]['lidar2img']:
-                    mat = torch.Tensor(mat).to(img_feats_view.device)
-                    rot_list.append(mat.inverse()[:3, :3])
-                    trans_list.append(mat.inverse()[:3, 3].view(-1))
-                rot_list = torch.stack(rot_list, dim=0)
-                trans_list = torch.stack(trans_list, dim=0)
+            for sample_idx in range(batch_size): # per batch，逐batch处理
+                rot_list = [] # 旋转列表
+                trans_list = [] # 平移列表
+                for mat in img_metas[sample_idx]['lidar2img']: # per-view, img->lidar
+                    mat = torch.Tensor(mat).to(img_feats_view.device) # mat: [4, 4]
+                    rot_list.append(mat.inverse()[:3, :3]) # rot_list: [3, 3]
+                    trans_list.append(mat.inverse()[:3, 3].view(-1)) # trans_list: [3]
+                rot_list = torch.stack(rot_list, dim=0) # [6, 3, 3]
+                trans_list = torch.stack(trans_list, dim=0) # [6, 3]
                 rots.append(rot_list)
                 trans.append(trans_list)
-            rots = torch.stack(rots)
-            trans = torch.stack(trans)
-            lidar2img_rt = img_metas[sample_idx]['lidar2img']  #### extrinsic parameters for multi-view images
+            rots = torch.stack(rots) # [1, 6, 3, 3]
+            trans = torch.stack(trans) # [1, 6, 3]
+            lidar2img_rt = img_metas[sample_idx]['lidar2img']  #### extrinsic parameters for multi-view images, [4, 4]
             
+            # img_bev_feat: [1, 256, 200, 200]
+            # depth_dist: [1, 6, 41, 56, 100]
             img_bev_feat, depth_dist = self.lift_splat_shot_vis(img_feats_view, rots, trans, lidar2img_rt=lidar2img_rt, img_metas=img_metas)
             # print(img_bev_feat.shape, pts_feats[-1].shape)
             if pts_feats is None:
-                pts_feats = [img_bev_feat] ####cam stream only
-            else:
+                pts_feats = [img_bev_feat] ####cam stream only, [1, 256, 200, 200]
+            else: # Fusion stream
                 if self.lc_fusion:
-                    if img_bev_feat.shape[2:] != pts_feats[0].shape[2:]:
+                    if img_bev_feat.shape[2:] != pts_feats[0].shape[2:]: # 如果尺寸不一致，双线性插值, 图像bev尺寸放缩到点云bev尺寸
                         img_bev_feat = F.interpolate(img_bev_feat, pts_feats[0].shape[2:], mode='bilinear', align_corners=True)
+                    """
+                    (reduc_conv): ConvModule(
+                        (conv): Conv2d(640, 384, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+                        (bn): BatchNorm2d(384, eps=0.001, momentum=0.01, affine=True, track_running_stats=True)
+                        (activate): ReLU()
+                    )
+                    """
                     pts_feats = [self.reduc_conv(torch.cat([img_bev_feat, pts_feats[0]], dim=1))]
+                    """
+                    (seblock): SE_Block(
+                        (att): Sequential(
+                        (0): AdaptiveAvgPool2d(output_size=1)
+                        (1): Conv2d(384, 384, kernel_size=(1, 1), stride=(1, 1))
+                        (2): Sigmoid()
+                        )
+                    )
+                    """
                     if self.se:
                         pts_feats = [self.seblock(pts_feats[0])]
         return dict(
@@ -164,21 +183,21 @@ class BEVF_FasterRCNN(MVXFasterRCNN):
         return bbox_list
 
     def forward_train(self,
-                      points=None,
-                      img_metas=None,
-                      gt_bboxes_3d=None,
-                      gt_labels_3d=None,
-                      gt_labels=None,
-                      gt_bboxes=None,
-                      img=None,
+                      points=None, # points per sample
+                      img_metas=None, # 图像信息，图像路径 转换矩阵等
+                      gt_bboxes_3d=None, # 3d GT box
+                      gt_labels_3d=None, # label
+                      gt_labels=None, # label
+                      gt_bboxes=None, # 2d GT box
+                      img=None, # [1, 6, 3, 448, 800] B N C H W
                       img_depth=None,
                       proposals=None,
                       gt_bboxes_ignore=None):
         feature_dict = self.extract_feat(
             points, img=img, img_metas=img_metas, gt_bboxes_3d=gt_bboxes_3d)
-        img_feats = feature_dict['img_feats']
-        pts_feats = feature_dict['pts_feats'] 
-        depth_dist = feature_dict['depth_dist']
+        img_feats = feature_dict['img_feats'] # [6, 256, 56, 100]
+        pts_feats = feature_dict['pts_feats'] # [1, 256, 200, 200]
+        depth_dist = feature_dict['depth_dist'] # [1, 6, 41, 56, 100]
 
         losses = dict()
         if pts_feats:
@@ -194,7 +213,7 @@ class BEVF_FasterRCNN(MVXFasterRCNN):
                 gt_labels=gt_labels,
                 gt_bboxes_ignore=gt_bboxes_ignore,
                 proposals=proposals)
-            if img_depth is not None:
+            if img_depth is not None: # None
                 loss_depth = self.depth_dist_loss(depth_dist, img_depth, loss_method=self.img_depth_loss_method, img=img) * self.img_depth_loss_weight
                 losses.update(img_depth_loss=loss_depth)
             losses.update(losses_img)

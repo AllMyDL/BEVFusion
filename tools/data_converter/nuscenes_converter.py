@@ -16,9 +16,9 @@ nus_categories = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
                   'barrier')
 
 
-def create_nuscenes_infos(root_path,
-                          info_prefix,
-                          version='v1.0-trainval',
+def create_nuscenes_infos(root_path, # ./data/nuscenes
+                          info_prefix, # nuscenes
+                          version='v1.0-trainval', # v1.0-trainval
                           max_sweeps=10):
     """Create info file of nuscene dataset.
 
@@ -38,10 +38,10 @@ def create_nuscenes_infos(root_path,
     available_vers = ['v1.0-trainval', 'v1.0-test', 'v1.0-mini']
     assert version in available_vers
     if version == 'v1.0-trainval':
-        train_scenes = splits.train
-        val_scenes = splits.val
+        train_scenes = splits.train # 获取train对应的场景 700段
+        val_scenes = splits.val # 获取val对应的场景 150段
     elif version == 'v1.0-test':
-        train_scenes = splits.test
+        train_scenes = splits.test  # 获取test对应的场景 150段
         val_scenes = []
     elif version == 'v1.0-mini':
         train_scenes = splits.mini_train
@@ -50,8 +50,12 @@ def create_nuscenes_infos(root_path,
         raise ValueError('unknown')
 
     # filter existing scenes.
-    available_scenes = get_available_scenes(nusc)
+    available_scenes = get_available_scenes(nusc) # 获取有效场景list
+    # 将有效关键帧的名字组成list --> ['scene-0001', 'scene-0002',..., 'scene-1110']
     available_scene_names = [s['name'] for s in available_scenes]
+    # 将train_scenes中有效scene组成train_scenes_names
+    # map方法返回的新数组是原数组的映射，和原数组的长度相同,
+    # filter方法返回的值是过滤原数组后的新数组，和原数组长度不同
     train_scenes = list(
         filter(lambda x: x in available_scene_names, train_scenes))
     val_scenes = list(filter(lambda x: x in available_scene_names, val_scenes))
@@ -109,14 +113,14 @@ def get_available_scenes(nusc):
     available_scenes = []
     print('total scene num: {}'.format(len(nusc.scene)))
     for scene in nusc.scene:
-        scene_token = scene['token']
-        scene_rec = nusc.get('scene', scene_token)
-        sample_rec = nusc.get('sample', scene_rec['first_sample_token'])
-        sd_rec = nusc.get('sample_data', sample_rec['data']['LIDAR_TOP'])
+        scene_token = scene['token'] # 获取scenes的token
+        scene_rec = nusc.get('scene', scene_token) # 根据token获取scene的record，rec代表record
+        sample_rec = nusc.get('sample', scene_rec['first_sample_token']) # 获取该scene下第一个sample的record
+        sd_rec = nusc.get('sample_data', sample_rec['data']['LIDAR_TOP']) # 获取该sample下的Lidar Data的record
         has_more_frames = True
         scene_not_exist = False
         while has_more_frames:
-            lidar_path, boxes, _ = nusc.get_sample_data(sd_rec['token'])
+            lidar_path, boxes, _ = nusc.get_sample_data(sd_rec['token']) # boxes (lidar xyz)
             lidar_path = str(lidar_path)
             if os.getcwd() in lidar_path:
                 # path from lyftdataset is absolute path
@@ -157,26 +161,88 @@ def _fill_trainval_infos(nusc,
     val_nusc_infos = []
 
     for sample in mmcv.track_iter_progress(nusc.sample):
-        lidar_token = sample['data']['LIDAR_TOP']
+        """
+        sample:
+        {
+            'token': 'e93e98b63d3b40209056d129dc53ceee', 
+            'timestamp': 1531883530449377, 
+            'prev': '', 
+            'next': '14d5adfe50bb4445bc3aa5fe607691a8', 
+            'scene_token': '73030fb67d3c46cfb5e590168088ae39', 
+            'data': {
+                'RADAR_FRONT': 'bddd80ae33ec4e32b27fdb3c1160a30e', 
+                'RADAR_FRONT_LEFT': '1a08aec0958e42ebb37d26612a2cfc57', 
+                'RADAR_FRONT_RIGHT': '282fa8d7a3f34b68b56fb1e22e697668', 
+                'RADAR_BACK_LEFT': '05fc4678025246f3adf8e9b8a0a0b13b', 
+                'RADAR_BACK_RIGHT': '31b8099fb1c44c6381c3c71b335750bb', 
+                'LIDAR_TOP': '3388933b59444c5db71fade0bbfef470', 
+                'CAM_FRONT': '020d7b4f858147558106c504f7f31bef', 
+                'CAM_FRONT_RIGHT': '16d39ff22a8545b0a4ee3236a0fe1c20', 
+                'CAM_BACK_RIGHT': 'ec7096278e484c9ebe6894a2ad5682e9', 
+                'CAM_BACK': 'aab35aeccbda42de82b2ff5c278a0d48', 
+                'CAM_BACK_LEFT': '86e6806d626b4711a6d0f5015b090116', 
+                'CAM_FRONT_LEFT': '24332e9c554a406f880430f17771b608'}, 
+            'anns': [
+                '173a50411564442ab195e132472fde71', 
+                '5123ed5e450948ac8dc381772f2ae29a', 
+                'acce0b7220754600b700257a1de1573d', 
+                '8d7cb5e96cae48c39ef4f9f75182013a', 
+                'f64bfd3d4ddf46d7a366624605cb7e91', 
+                'f9dba7f32ed34ee8adc92096af767868', 
+                '086e3f37a44e459987cde7a3ca273b5b', 
+                '3964235c58a745df8589b6a626c29985', 
+                '31a96b9503204a8688da75abcd4b56b2', 
+                'b0284e14d17a444a8d0071bd1f03a0a2']
+        }
+        sd_rec:
+        {
+            'token': '3388933b59444c5db71fade0bbfef470', 
+            'sample_token': 'e93e98b63d3b40209056d129dc53ceee', 
+            'ego_pose_token': '3388933b59444c5db71fade0bbfef470', 
+            'calibrated_sensor_token': '7a0cd258d096410eb68251b4b87febf5', 
+            'timestamp': 1531883530449377, 
+            'fileformat': 'pcd', 
+            'is_key_frame': True, 
+            'height': 0, 'width': 0, 
+            'filename': 'samples/LIDAR_TOP/n015-2018-07-18-11-07-57+0800__LIDAR_TOP__1531883530449377.pcd.bin', 
+            'prev': '', 'next': 'bc2cd87d110747cd9849e2b8578b7877', 
+            'sensor_modality': 'lidar', 'channel': 'LIDAR_TOP'
+        }
+        cs_record: # sensor-ego
+        {
+            'token': '7a0cd258d096410eb68251b4b87febf5', 
+            'sensor_token': 'dc8b396651c05aedbb9cdaae573bb567', 
+            'translation': [0.943713, 0.0, 1.84023],
+            'rotation': [0.7077955119163518, -0.006492242056004365, 0.010646214713995808, -0.7063073142877817], 
+            'camera_intrinsic': []
+        }
+        pose_record: # ego-global
+        {
+            'token': '3388933b59444c5db71fade0bbfef470', 
+            'timestamp': 1531883530449377, 
+            'rotation': [-0.7495886280607293, -0.0077695335695504636, 0.00829759813869316, -0.6618063711504101], 
+            'translation': [1010.1328353833223, 610.8111652918716, 0.0]
+        }
+        """
+        lidar_token = sample['data']['LIDAR_TOP'] # '3388933b59444c5db71fade0bbfef470'
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
         cs_record = nusc.get('calibrated_sensor',
                              sd_rec['calibrated_sensor_token'])
         pose_record = nusc.get('ego_pose', sd_rec['ego_pose_token'])
-        lidar_path, boxes, _ = nusc.get_sample_data(lidar_token)
-
+        lidar_path, boxes, _ = nusc.get_sample_data(lidar_token) # lidar boxes
         mmcv.check_file_exist(lidar_path)
 
         info = {
-            'lidar_path': lidar_path,
-            'token': sample['token'],
-            'sweeps': [],
+            'lidar_path': lidar_path, # 点云路径
+            'token': sample['token'], # 当前关键帧token
+            'sweeps': [], 
             'cams': dict(),
-            'lidar2ego_translation': cs_record['translation'],
-            'lidar2ego_rotation': cs_record['rotation'],
-            'ego2global_translation': pose_record['translation'],
-            'ego2global_rotation': pose_record['rotation'],
-            'timestamp': sample['timestamp'],
-        }
+            'lidar2ego_translation': cs_record['translation'], # lidar2ego 平移
+            'lidar2ego_rotation': cs_record['rotation'], # lidar2ego 旋转
+            'ego2global_translation': pose_record['translation'], # ego2global平移
+            'ego2global_rotation': pose_record['rotation'], #ego2global 旋转
+            'timestamp': sample['timestamp'], # 时间戳
+        } # lidar info
 
         l2e_r = info['lidar2ego_rotation']
         l2e_t = info['lidar2ego_translation']
@@ -196,7 +262,24 @@ def _fill_trainval_infos(nusc,
         ]
         for cam in camera_types:
             cam_token = sample['data'][cam]
-            cam_path, _, cam_intrinsic = nusc.get_sample_data(cam_token)
+            cam_path, _, cam_intrinsic = nusc.get_sample_data(cam_token) # 根据相机的token获取图片的路径和内参
+            """
+            cam_info:
+            {
+                'data_path': './data/nuscenes/samples/CAM_FRONT/n015-2018-07-18-11-07-57+0800__CAM_FRONT__1531883530412470.jpg', 
+                'type': 'CAM_FRONT', 
+                'sample_data_token': '020d7b4f858147558106c504f7f31bef', 
+                'sensor2ego_translation': [1.70079118954, 0.0159456324149, 1.51095763913], 
+                'sensor2ego_rotation': [0.4998015430569128, -0.5030316162024876, 0.4997798114386805, -0.49737083824542755], 
+                'ego2global_translation': [1010.1102882349232, 610.6567106479714, 0.0], 
+                'ego2global_rotation': [-0.7530285141171715, -0.007718682910458633, 0.00863090844122062, -0.6578859979358822], 
+                'timestamp': 1531883530412470, 
+                'sensor2lidar_rotation': array([[ 0.99995012,  0.00730543,  0.00681137],
+                                [-0.00694924,  0.01901527,  0.99979504],
+                                [ 0.00717441, -0.9997925 ,  0.01906509]]), 
+                'sensor2lidar_translation': array([ 0.00072265,  0.60818175, -0.31034774])
+            }
+            """
             cam_info = obtain_sensor2top(nusc, cam_token, l2e_t, l2e_r_mat,
                                          e2g_t, e2g_r_mat, cam)
             cam_info.update(cam_intrinsic=cam_intrinsic)
@@ -308,17 +391,26 @@ def obtain_sensor2top(nusc,
     l2e_t_s = sweep['sensor2ego_translation']
     e2g_r_s = sweep['ego2global_rotation']
     e2g_t_s = sweep['ego2global_translation']
+    # [1010.1102882349232, 610.6567106479714, 0.0] e2g_t_s
+    # [1010.1328353833223, 610.8111652918716, 0.0] e2g_t
 
     # obtain the RT from sensor to Top LiDAR
     # sweep->ego->global->ego'->lidar
     l2e_r_s_mat = Quaternion(l2e_r_s).rotation_matrix
     e2g_r_s_mat = Quaternion(e2g_r_s).rotation_matrix
+    # print('----')
+    # x = np.array([1, 2, 3])
+    # x_1 = x @ l2e_r_s_mat.T @ e2g_r_s_mat.T @ np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T
+    # x_2 = np.linalg.inv(l2e_r_mat) @ np.linalg.inv(e2g_r_mat) @ e2g_r_s_mat @ l2e_r_s_mat @ x.T
+    # print(x_1)
+    # print(x_2)
+    # exit()
     R = (l2e_r_s_mat.T @ e2g_r_s_mat.T) @ (
         np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T)
     T = (l2e_t_s @ e2g_r_s_mat.T + e2g_t_s) @ (
-        np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T)
+        np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T) # cam-global在lidar下的向量
     T -= e2g_t @ (np.linalg.inv(e2g_r_mat).T @ np.linalg.inv(l2e_r_mat).T
-                  ) + l2e_t @ np.linalg.inv(l2e_r_mat).T
+                  ) + l2e_t @ np.linalg.inv(l2e_r_mat).T # 全局原点在lidar系下的位置
     sweep['sensor2lidar_rotation'] = R.T  # points @ R.T + T
     sweep['sensor2lidar_translation'] = T
     return sweep

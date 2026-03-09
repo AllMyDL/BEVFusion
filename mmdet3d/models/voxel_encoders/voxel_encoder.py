@@ -410,7 +410,7 @@ class HardVFE(nn.Module):
                 num_points.type_as(features).view(-1, 1, 1))
             # TODO: maybe also do cluster for reflectivity
             f_cluster = features[:, :, :3] - points_mean
-            features_ls.append(f_cluster)
+            features_ls.append(f_cluster) # 到聚类中心的距离 3dim
 
         # Find distance of x, y, and z from pillar center
         if self._with_voxel_center:
@@ -425,20 +425,20 @@ class HardVFE(nn.Module):
             f_center[:, :, 2] = features[:, :, 2] - (
                 coors[:, 1].type_as(features).unsqueeze(1) * self.vz +
                 self.z_offset)
-            features_ls.append(f_center)
+            features_ls.append(f_center) # pillar中心的距离
 
         if self._with_distance:
             points_dist = torch.norm(features[:, :, :3], 2, 2, keepdim=True)
-            features_ls.append(points_dist)
+            features_ls.append(points_dist) 
 
         # Combine together feature decorations
-        voxel_feats = torch.cat(features_ls, dim=-1)
+        voxel_feats = torch.cat(features_ls, dim=-1) # 4 init + 3 + 3 distance, 10dim, [13909, 64, 10]
         # The feature decorations were calculated without regard to whether
         # pillar was empty.
         # Need to ensure that empty voxels remain set to zeros.
-        voxel_count = voxel_feats.shape[1]
-        mask = get_paddings_indicator(num_points, voxel_count, axis=0)
-        voxel_feats *= mask.unsqueeze(-1).type_as(voxel_feats)
+        voxel_count = voxel_feats.shape[1] # 64
+        mask = get_paddings_indicator(num_points, voxel_count, axis=0) # [13909, 64]
+        voxel_feats *= mask.unsqueeze(-1).type_as(voxel_feats) # [13909, 64, 10]
 
         for i, vfe in enumerate(self.vfe_layers):
             voxel_feats = vfe(voxel_feats)
@@ -446,8 +446,7 @@ class HardVFE(nn.Module):
         if (self.fusion_layer is not None and img_feats is not None):
             voxel_feats = self.fusion_with_mask(features, mask, voxel_feats,
                                                 coors, img_feats, img_metas)
-
-        return voxel_feats
+        return voxel_feats # [13909, 64]
 
     def fusion_with_mask(self, features, mask, voxel_feats, coors, img_feats,
                          img_metas):

@@ -32,11 +32,11 @@ def kitti_data_prep(root_path, info_prefix, version, out_dir):
         with_mask=(version == 'mask'))
 
 
-def nuscenes_data_prep(root_path,
-                       info_prefix,
-                       version,
-                       dataset_name,
-                       out_dir,
+def nuscenes_data_prep(root_path, # ./data/nuscenes
+                       info_prefix, # nuscenes
+                       version, # v1.0-trainval
+                       dataset_name, # NuScenesDataset
+                       out_dir, # ./data/nuscenes
                        max_sweeps=10):
     """Prepare data related to nuScenes dataset.
 
@@ -217,12 +217,12 @@ if __name__ == '__main__':
     elif args.dataset == 'nuscenes' and args.version != 'v1.0-mini':
         train_version = f'{args.version}-trainval'
         nuscenes_data_prep(
-            root_path=args.root_path,
-            info_prefix=args.extra_tag,
-            version=train_version,
+            root_path=args.root_path, # ./data/nuscenes
+            info_prefix=args.extra_tag, # nuscenes
+            version=train_version, # v1.0-trainval
             dataset_name='NuScenesDataset',
-            out_dir=args.out_dir,
-            max_sweeps=args.max_sweeps)
+            out_dir=args.out_dir, # ./data/nuscenes
+            max_sweeps=args.max_sweeps) # 10
         test_version = f'{args.version}-test'
         nuscenes_data_prep(
             root_path=args.root_path,

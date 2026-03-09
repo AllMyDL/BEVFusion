@@ -167,6 +167,7 @@ class CBSwinTransformer(BaseModule):
 
     def forward(self, x):
         outs = []
+        # self.cb_modules: k个swintransformer
         for i, module in enumerate(self.cb_modules):
             if i == 0:
                 feats, tmps = module(x)

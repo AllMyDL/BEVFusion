@@ -48,8 +48,8 @@ class FPNC(FPN):
             conv_cfg=None,
             norm_cfg=None,
             act_cfg=None,
-            final_dim=(900, 1600), 
-            downsample=4, 
+            final_dim=(900, 1600), # (450, 800)
+            downsample=4, # 8
             use_adp=False,
             fuse_conv_cfg=None,
             outC=256,
@@ -59,7 +59,7 @@ class FPNC(FPN):
             norm_cfg=norm_cfg,
             act_cfg=act_cfg,
             **kwargs)
-        self.target_size = (final_dim[0] // downsample, final_dim[1] // downsample)
+        self.target_size = (final_dim[0] // downsample, final_dim[1] // downsample) # (56, 100)
         self.use_adp = use_adp
         if use_adp:
             adp_list = []
@@ -95,11 +95,39 @@ class FPNC(FPN):
 
     @auto_fp16()
     def forward(self, x):
+        """
+        x:
+        [
+            [6, 96, 112, 200],
+            [6, 192, 56, 100],
+            [6, 384, 28, 50],
+            [6, 768, 14, 25]
+        ]
+        outs:
+        [
+            [6, 256, 112, 200],
+            [6, 256, 56, 100],
+            [6, 256, 28, 50],
+            [6, 256, 14, 25],
+            [6, 256, 7, 13]
+        ]
+        """
         outs = super().forward(x)
         if len(outs) > 1:
             resize_outs = []
             if self.use_adp:
-                for i in range(len(outs)):
+                """
+                outs -> feature
+                target_size: [56, 100]
+                [
+                    [6, 256, 112, 200] -> [6, 256, 56, 100]
+                    [6, 256, 56, 100] -> [6, 256, 56, 100]
+                    [6, 256, 28, 50] -> [6, 256, 56, 100]
+                    [6, 256, 14, 25] -> [6, 256, 56, 100]
+                    [6, 256, 7, 13] -> [6, 256, 56, 100]
+                ]
+                """
+                for i in range(len(outs)): 
                     feature = self.adp[i](outs[i])
                     resize_outs.append(feature)
             else:
@@ -109,9 +137,9 @@ class FPNC(FPN):
                     if feature.shape[2:] != target_size:
                         feature = F.interpolate(feature, target_size,  mode='bilinear', align_corners=True)
                     resize_outs.append(feature)
-            out = torch.cat(resize_outs, dim=1)
-            out = self.reduc_conv(out)
-                
+            out = torch.cat(resize_outs, dim=1) # out: [6, 1280, 56, 100]
+            out = self.reduc_conv(out) # out: [6, 256, 56, 100]
+           
 
         else:
             out = outs[0]

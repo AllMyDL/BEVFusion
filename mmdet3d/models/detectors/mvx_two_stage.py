@@ -189,6 +189,7 @@ class MVXTwoStageDetector(Base3DDetector):
 
     def extract_img_feat(self, img, img_metas):
         """Extract features of images."""
+        # img: [1, 6, 3, 448, 800]
         if self.with_img_backbone and img is not None:
             input_shape = img.shape[-2:]
             # update real input shape of each single img
@@ -196,36 +197,64 @@ class MVXTwoStageDetector(Base3DDetector):
                 img_meta.update(input_shape=input_shape)
 
             if img.dim() == 5 and img.size(0) == 1:
-                img.squeeze_(0)
+                img.squeeze_(0) # img: [1, 6, 3, 448, 800] -> [6, 3, 448, 800]
             elif img.dim() == 5 and img.size(0) > 1:
                 B, N, C, H, W = img.size()
                 img = img.view(B * N, C, H, W)
+            """
+            CBSwinTransformer, cbnet
+            [6, 3, 448, 800] -> 
+            [
+                [6, 96, 112, 200],
+                [6, 192, 56, 100],
+                [6, 384, 28, 50],
+                [6, 768, 14, 25]
+            ]
+            """
             img_feats = self.img_backbone(img.float())
         else:
             return None
         if self.with_img_neck:
             img_feats = self.img_neck(img_feats)
-        return img_feats
+        return img_feats # [6, 256, 56, 100]
 
     def extract_pts_feat(self, pts, img_feats, img_metas, gt_bboxes_3d=None):
         """Extract features of points."""
+        """
+            pts: [361736, 4]
+            img_feats: None
+            img_metas: sample_idx, pts_filename
+        """
         if not self.with_pts_bbox:
             return None
         voxels, num_points, coors = self.voxelize(pts) # torch.Size([13909, 64, 4]) torch.Size([13909]) torch.Size([13909, 4])
         voxel_features = self.pts_voxel_encoder(voxels, num_points, coors,
-                                                img_feats, img_metas)
+                                                img_feats, img_metas) # [13909, 64]
         batch_size = coors[-1, 0] + 1
-        x = self.pts_middle_encoder(voxel_features, coors, batch_size)
+        x = self.pts_middle_encoder(voxel_features, coors, batch_size) # [1, 64, 400, 400]
         x = self.pts_backbone(x)
+        """
+            x:[
+                [1, 64, 200, 200],
+                [1, 128, 100, 100]
+            ]
+        """
         if self.with_pts_neck:
             x = self.pts_neck(x)
-    
-        
-        return x
+        """
+            x:[
+                [1, 256, 50, 50],
+                [1, 384, 200, 200]
+            ]
+        """
+        return x # lidar bev features
 
     def extract_feat(self, points, img, img_metas, gt_bboxes_3d=None):
         """Extract features from images and points."""
-        img_feats = self.extract_img_feat(img, img_metas)
+        """
+            如果是lidar stream, img = None
+        """
+        img_feats = self.extract_img_feat(img, img_metas) # [6, 256, 56, 100]
         # pts_feats = self.extract_pts_feat(points, img_feats, img_metas, gt_bboxes_3d)
         pts_feats = self.extract_pts_feat(points, img_feats, img_metas)
         return (img_feats, pts_feats)
@@ -241,21 +270,27 @@ class MVXTwoStageDetector(Base3DDetector):
         Returns:
             tuple[torch.Tensor]: Concatenated points, number of points
                 per voxel, and coordinates.
+        points: [361736, 4]
         """
         voxels, coors, num_points = [], [], []
-        for res in points:
+        for res in points: # per-sample
+            """
+                res_voxels: [13909, 64, 4] [M, max_points, ndim]
+                res_coors: [13909, 3] [M, 3]
+                res_num_points: [13909] [M]
+            """
             res_voxels, res_coors, res_num_points = self.pts_voxel_layer(res)
             voxels.append(res_voxels)
             coors.append(res_coors)
             num_points.append(res_num_points)
-        voxels = torch.cat(voxels, dim=0)
-        num_points = torch.cat(num_points, dim=0)
+        voxels = torch.cat(voxels, dim=0) # [13909, 64, 4]
+        num_points = torch.cat(num_points, dim=0) # [13909, ]
         coors_batch = []
         for i, coor in enumerate(coors):
             coor_pad = F.pad(coor, (1, 0), mode='constant', value=i)
-            coors_batch.append(coor_pad)
-        coors_batch = torch.cat(coors_batch, dim=0)
-        return voxels, num_points, coors_batch
+            coors_batch.append(coor_pad) # batch_index 填充
+        coors_batch = torch.cat(coors_batch, dim=0) # [13909, 4]
+        return voxels, num_points, coors_batch 
 
     def forward_train(self,
                       points=None,
