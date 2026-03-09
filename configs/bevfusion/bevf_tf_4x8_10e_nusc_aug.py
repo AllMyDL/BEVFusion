@@ -194,8 +194,8 @@ log_config = dict(
            dict(type='TensorboardLoggerHook')])
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-load_from = 'models/lidar_tf.pth'
-load_lift_from = 'models/cam_tf_e20.pth'
+load_from = './models/lidar_tf.pth'
+load_lift_from = './models/cam_tf_e20.pth'
 
 resume_from = None
 workflow = [('train', 1)]

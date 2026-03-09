@@ -3,7 +3,7 @@ _base_ = [
     '../_base_/schedules/schedule_1x.py',
     '../_base_/default_runtime.py'
 ]
-final_dim=(900, 1600) # HxW
+final_dim=(450, 800) # HxW
 downsample=8
 voxel_size = [0.25, 0.25, 8]
 imc=256
@@ -142,7 +142,7 @@ model = dict(
 
 
 data = dict(
-    samples_per_gpu=2,
+    samples_per_gpu=1,
     workers_per_gpu=6,)
 
 optimizer = dict(type='AdamW', lr=0.001, betas=(0.9, 0.999), weight_decay=0.05,

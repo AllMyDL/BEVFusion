@@ -8,7 +8,7 @@ optimizer = dict(_delete_=True, type='AdamW', lr=0.001, betas=(0.9, 0.999), weig
                                                  'relative_position_bias_table': dict(decay_mult=0.),
                                                  'norm': dict(decay_mult=0.)}))
 
-final_dim=(900, 1600) # HxW
+final_dim=(450, 800) # HxW
 downsample=8
 voxel_size = [0.25, 0.25, 8]
 model = dict(
@@ -112,7 +112,7 @@ model = dict(
 
 
 data = dict(
-    samples_per_gpu=4,
+    samples_per_gpu=1,
     workers_per_gpu=4,)
 
 load_img_from = 'work_dirs/mask_rcnn_dbswin-t_fpn_3x_nuim_cocopre/epoch_36.pth'
